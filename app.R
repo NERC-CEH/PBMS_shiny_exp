@@ -177,8 +177,8 @@ cbPalette <- c("#0072B2", "#E69F00",   "#009E73","#CC79A7",  "#D55E00","#F0E442"
                "#0072B2","#56B4E9",  "#009E73","#CC79A7","#E69F00",    "#D55E00","#F0E442", "#999999")
 
 
-PBMSdata <- read_excel("Data for Michael Tso.xlsx") %>% 
-  mutate(`Bird species` = str_to_title(`Bird species`, locale = "en"))  # upper case 
+# PBMSdata <- read_excel("Data for Michael Tso.xlsx") %>% 
+#   mutate(`Bird species` = str_to_title(`Bird species`, locale = "en"))  # upper case 
 
 PBMSdata = cc %>% filter(!is.na(X))
 
@@ -342,7 +342,7 @@ server <- function(input, output, session) {
   
   PBMSdata2<- reactive({
     PBMSdata_filter() %>% 
-      dplyr::mutate(clusters = find_clusters(PBMSdata_filter() %>% select(Long, Lat,dist_to_coast,elevation))) %>% 
+      dplyr::mutate(clusters = find_clusters(PBMSdata_filter() %>% select(!!input$cluster_vars))) %>%  ### here
       dplyr::mutate(`Bird species` = as.factor(`Bird species`),
                     `Year submitted to PBMS` = as.factor(`Year submitted to PBMS`)) %>% 
       dplyr::select(-region) %>% 
@@ -444,7 +444,6 @@ server <- function(input, output, session) {
   
   ####  location clustering ###
   clusterdata = reactive({       # perform clustering
-    set.seed(200) # for reproducibility
     
     cluster_data = tidydata() %>%
       dplyr::select(c("DATE",input$MA_choices )) #("DATE","DRYTMP","SOLAR","WSPEED","RAIN")
