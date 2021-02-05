@@ -5,15 +5,25 @@
 
 # leafelet markers color: a bit tricky https://stackoverflow.com/questions/32940617/change-color-of-leaflet-marker
 
+# image in leaflet popup markers: https://stackoverflow.com/questions/36433899/image-in-r-leaflet-marker-popups
+
+# overlay image exact location (say old map or EM map)
+
 # good package: https://cran.r-project.org/web/packages/googleway/vignettes/googleway-vignette.html
 # save a mapshot: https://r-spatial.github.io/mapview/reference/mapshot.html
 
-## to fix 30/6/2020:
-# 1. randomize 10 KM gridref
+## to fix 3/2/2021:
+# 1. randomize 10 KM gridref (skip)
 # 2. fix chem data specified by names
 # 2b. fix region by species or year color (as.factor )
-# 3. state tag plots for PCB
-# 4. some PCB map?
+# 3. economic regions not number but names
+# 4. bird details: see Lee's comments: comment out PCB concs., add post mortem year, cause of death(NA= to be examined, need live OCDB connection, need to test this)
+# 5. Finish mapsave button
+# 6. Fix logo disappearing (https://github.com/r-spatial/leafem/issues/22) --> fix later, backup first
+# 7. Fix randomnes for clustering (why change when seed is fixed, prob data change)
+# 8. Use htmltools::htmlEscape in leaflet popup for security
+# ? how to give a feel of where most birds are coming from?
+
 
 packrat::on(project = '/data/PBMS/')
 #shinyWidgets::shinyWidgetsGallery()
@@ -22,6 +32,7 @@ set.seed(100)
 
 library(shiny)
 library(leaflet)
+#library(leafem) # imported by mapview
 library(readxl)
 library(dplyr)
 library(shinyWidgets)
@@ -31,12 +42,18 @@ library(raster)
 library(shinythemes)
 library(stringr)
 library(lubridate)
-library(mapview)   # more advanced leaflet
+library(mapview)   # more advanced leaflet, may need manually untar Phantom_JS, need copy bin/phantomjs to add to a location in $PATH, save leaflet map： https://stackoverflow.com/questions/44259716/how-to-save-a-leaflet-map-in-shiny
 library(plotly)
 library(readr)
 library(sf)
 library(rnrfa) # for osg_parse
 library(rnaturalearth) # dist to coast: https://dominicroye.github.io/en/2019/calculating-the-distance-to-the-sea-in-r/
+#library(htmltools) # important to use it for security on leaflet popup
+
+Sys.getenv("PATH")
+#mapshot(leaflet() %>% addTiles(),file='test.png')
+
+
 
 chemcode_lookup = read_csv('/data/PBMS/PBMS_CHEM_CODE_DESC.csv')
 
@@ -62,9 +79,14 @@ lookup_EU = function(X,Y){
   proj <-  "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.1502,0.247,0.8421,-20.4894 +units=m +no_defs"
   coords_sp <- SpatialPoints(matrix(coords, nrow = length(coords)/2, ncol = 2), proj4string= CRS(proj))
   regnum <- regrast[cellFromXY(regrast , coords_sp)]
+  
+  EU_names <- data.frame(num=1:11, names=c("Wales","London" , "North West","Scotland","West Midlands","Yorkshire and the Humber",
+                                           "South East", "East of England", "East Midlands", "North East", "South West" ))
+  EU_names <- setNames(EU_names$names,EU_names$num)
+  regnum <- EU_names[regnum]
   return(regnum)
 }
-
+# previewColors(colorFactor("Paired", domain = NULL), EU_names)
 
 #distinct(chem,CHEM_CHEMICALCODE)
 
@@ -108,7 +130,8 @@ chem = read_csv('/data/PBMS/BOP_ANALYTICAL_SAMPLE.csv') %>%
 
 
 cc = read_csv('/data/PBMS/BOP_CARCASS_DETAILS.csv') %>% 
-  select(CARCASS_ID,ORIGINAL_SPECIES,COLLECTION_YEAR,LOCATION_10KM_GRIDREF,LOCATION_GRIDREF) %>% 
+  mutate(PM_DATE = make_date(PM_YEAR,PM_MONTH,PM_DAY)) %>% 
+  select(CARCASS_ID,ORIGINAL_SPECIES,COLLECTION_YEAR,LOCATION_10KM_GRIDREF,LOCATION_GRIDREF,PM_DATE,PM_YEAR) %>% 
   rename(`Bird species` = ORIGINAL_SPECIES, `Year submitted to PBMS` = COLLECTION_YEAR) %>% 
   left_join(chem)
 
@@ -170,6 +193,7 @@ uk <- st_transform(uk, 3055) # transform to UTM
 uk_coastline <- st_cast(uk, "MULTILINESTRING")
 #dist <- st_distance(uk_coastline, grid)
 
+pbms_logo <- "pbms-logo.png"
 
 cbPalette <- c("#0072B2", "#E69F00",   "#009E73","#CC79A7",  "#D55E00","#F0E442", "#999999", "#56B4E9",
                "#0072B2","#56B4E9",  "#009E73","#CC79A7","#E69F00",    "#D55E00","#F0E442", "#999999",
@@ -258,7 +282,9 @@ find_clusters = function(a){  # automatically employ elbows method (last point t
 ui <- fillPage(
   #title = "UK Predatory Bird Monitoring Scheme",
   #theme = shinytheme("simplex"),
-  leafletOutput("mymap", width = "100%", height = "100%"),
+  #div(id="logo", style="position:fixed;top:0px;left:0px;z-index:11000;",
+  #       "pbms-logo.png">'),
+  leafletOutput("mymap", width = "100%", height = "100%"), # %>% withSpinner(color="#0dc5c1"),
   absolutePanel(
     id = "controls", class = "panel panel-default", fixed = TRUE,
     draggable = TRUE, top = 55, left = "8%", #125 
@@ -270,7 +296,7 @@ ui <- fillPage(
       tabsetPanel(
         tabPanel("Home",
       sliderInput(inputId = 'years', label = 'Year range', 
-                  min = min_yr, max = max_yr, value = c(1994,2002),animate = T),
+                  min = min_yr, max = max_yr, value = c(1994,2002),animate = T,sep=""),
       selectInput(inputId = 'species', label = 'Species', 
                   multiple =TRUE,
                   selectize = TRUE,
@@ -283,10 +309,13 @@ ui <- fillPage(
         placeholder = "This is a placeholder", 
         btnSearch = icon("search"), 
         btnReset = icon("remove"), 
-        width = "100%"
+        width = "70%"
       ),
       checkboxInput(inputId = 'overlay_built', 'Overlay built areas (England and Wales)'),
-      p("Save plot"),
+      #p("Save plot hello"),
+      p(),
+      downloadButton("dl",label = "Download map"),
+      
       radioButtons(inputId = 'marker_option', label = 'Marker option:', 
                   selected = 'circles', 
                   choices = c('pins','circles','PCB'), inline = T)
@@ -296,6 +325,7 @@ ui <- fillPage(
                  #             selected = c('Latitude','Longitude'), 
                  #             mulitple = TRUE,
                  #             choices = c('Latitude','Longitude', 'Altitude', 'Distance to Sea')) ,
+                 h4('Seclect options to color circle markers and to group variables for analysis.'),
                  radioButtons(inputId = 'region_option', label = 'Regionalization option:', 
                               selected = 'default', 
                               choices = c('default','UK Economic regions','clusters','species','year'), inline = T),
@@ -319,7 +349,7 @@ ui <- fillPage(
                  plotlyOutput("prediction_PCB", height = "600px") %>% withSpinner(color="#0dc5c1")
                  )
       ),
-      circle = TRUE, status = "danger", icon = icon("sliders"), inline = F, width = "450px",
+      circle = TRUE, status = "danger", icon = icon("sliders"), inline = F, width = "550px",
       tooltip = tooltipOptions(title = "Click to see inputs !")
     )    
   ),
@@ -345,13 +375,24 @@ server <- function(input, output, session) {
       dplyr::mutate(clusters = find_clusters(PBMSdata_filter() %>% select(!!input$cluster_vars))) %>%  ### here
       dplyr::mutate(`Bird species` = as.factor(`Bird species`),
                     `Year submitted to PBMS` = as.factor(`Year submitted to PBMS`)) %>% 
-      dplyr::select(-region) %>% 
-      dplyr::mutate(region = case_when(input$region_option == "UK Economic regions" ~ EU_region,
-                                       input$region_option == "clusters" ~ clusters,
-                                       input$region_option == "species" ~ `Bird species`,
-                                       input$region_option == "year" ~ `Year submitted to PBMS`,
-                                       #a == 0 | a == 1 | a == 4 | a == 3 |  c == 4 ~ 3,
-                                       TRUE ~ as.factor(1)))
+      #dplyr::select(-region) %>% 
+      #dplyr::mutate(region=as.character(region)) %>%  # 210204: need to un-factor then re-factor to avoid NA
+      # dplyr::mutate(region = case_when(input$region_option == "UK Economic regions" ~ EU_region,  # case_when doesn't work for non-integers
+      #                                  input$region_option == "clusters" ~ clusters,
+      #                                  input$region_option == "species" ~ `Bird species`,       
+      #                                  input$region_option == "year" ~ `Year submitted to PBMS`,
+      #                                  #a == 0 | a == 1 | a == 4 | a == 3 |  c == 4 ~ 3,
+      #                                  TRUE ~ as.factor(1))) %>% 
+      #mutate(region = `Bird species`)
+    
+    #%>%  
+      {if (input$region_option == "clusters") dplyr::mutate(., region= clusters) else .} %>% 
+      {if (input$region_option == "UK Economic regions") dplyr::mutate(., region= EU_region) else .} %>% 
+      {if (input$region_option == "year") dplyr::mutate(., region= `Year submitted to PBMS`) else .} %>% 
+    {if (input$region_option == "species") dplyr::mutate(., region= `Bird species`) else .} 
+    
+    #  mutate(region = ifelse(input$region_option == "species", `Bird species`, region)) %>% 
+     # mutate(region = ifelse(input$region_option == "year", `Year submitted to PBMS`, region))
   })
   
   #factpal <- colorFactor("RdYlBu", 1:2, n = 2)
@@ -359,28 +400,43 @@ server <- function(input, output, session) {
   #factpal <- colorFactor("viridis", 1:5, n = 5)
   #factpal <- colorFactor(cbPalette[1:5], 1:5, n = 5)
   
+  factpal <- colorFactor("Paired",domain=NULL)
   
-  output$mymap <- renderLeaflet({                          
+  
+  
+  map <- reactiveValues(dat = 0)
+  
+  # leaflet map, do this way to can pass reactive output to mapshot: https://stackoverflow.com/questions/44259716/how-to-save-a-leaflet-map-in-shiny                 
+  # Create foundational leaflet map
+  # and store it as a reactive expression
+  foundational.map <- reactive({
     print(head(PBMSdata2() ))
     print(input$region_option)
     nlevels <- length(unique(PBMSdata2()$region))
-    if (input$region_option== 'year'| input$region_option== 'species'){
-      factpal <- colorFactor("viridis",levels = sort(unique(PBMSdata2()$region),decreasing=TRUE)) # new factors not quite working
-    } else {
-      factpal <- colorFactor(cbPalette[1:nlevels], 1:nlevels, n = nlevels)
-    }
+    # if (input$region_option== 'year'| input$region_option== 'species'){
+    #   factpal <- colorFactor("viridis",levels = sort(unique(PBMSdata2()$region),decreasing=TRUE)) # new factors not quite working
+    # } else {
+    #   factpal <- colorFactor("Paired",domain=NULL)
+    # }
     
-    m = leaflet(data=PBMSdata2() ) %>% addTiles()
+    m = leaflet(data=PBMSdata2() ) %>% # addTiles() %>% 
+      addProviderTiles(providers$Stamen.TonerLite,
+                       options = providerTileOptions(noWrap = TRUE)) %>% 
+          leafem::addLogo(pbms_logo, url = "https://pbms.ceh.ac.uk",
+                          position = "bottomleft",
+                          offset.x = 10, offset.y = 10,
+                          width = 320, height = 214)
     if (input$marker_option == "circles") {
         m = m %>% addCircleMarkers(~Long,~Lat,
                  color = ~factpal(region),
-                 popup = ~paste("<b><font color='#0281a4'>UK Predatory Bird Monitoring Scheme</font></b>",
-                                "<br/><b>Year:</b>",`Year submitted to PBMS`, 
+                 popup = ~(paste("<b><font color='#0281a4'>UK Predatory Bird Monitoring Scheme</font></b>",
+                                "<br/><b>Submission year:</b>",`Year submitted to PBMS`,
+                                "<br/><b>Post mortem date:</b>",as.character(`PM_DATE`),
                                 "<br/><b>PBMS ID:</b>",`CARCASS_ID`, 
                                 "<br/><b>Species:</b>",`Bird species`,
-                                "<br/><b>Common PCB conc.:</b>", PCB, 
-                                "<p><font color='#c2c5cc'> &copy;" ,year(Sys.Date()),"UK Centre for Ecology and Hydrology </font></p>") ,
-                 label = ~as.character(`Year submitted to PBMS`)) %>% 
+                              #  "<br/><b>Common PCB conc.:</b>", PCB, 
+                                "<p><font color='#c2c5cc'> &copy;" ,year(Sys.Date()),"UK Centre for Ecology and Hydrology </font></p>")) ,
+                 label = ~(as.character(`Year submitted to PBMS`))) %>% 
         addLegend('bottomright', pal = factpal, values = PBMSdata2()$region,
                 title = paste0('Bird locations<br>',input$region_option,':'),
                 opacity = 1)
@@ -439,10 +495,65 @@ server <- function(input, output, session) {
                                                  "<p><font color='#c2c5cc'> &copy;" ,year(Sys.Date()),"UK Centre for Ecology and Hydrology </font></p>") ,
                                   label = ~as.character(`Year submitted to PBMS`))
     }
-    m
+    map$dat <- m
+      
+    m 
+  })
+  # observe({
+  #   leafletProxy("mymap") %>%
+  #     leafem::addLogo(pbms_logo, url = "https://pbms.ceh.ac.uk",
+  #               position = "bottomleft",
+  #               offset.x = 10, offset.y = 10,
+  #               width = 320, height = 214)
+  # })
+  
+  output$mymap <- renderLeaflet({                          
+    foundational.map()
   })
   
-  ####  location clustering ###
+  ######## Map shot stuff #########
+  # store the current user-created version of the Leaflet map for download in 
+  # a reactive expression
+  user.created.map <- reactive({
+    
+    # call the foundational Leaflet map
+    foundational.map() %>%
+      
+      # store the view based on UI
+      setView( lng = input$map_center$lng
+               ,  lat = input$map_center$lat
+               , zoom = input$map_zoom
+      )
+    
+  }) # end of creating user.created.map()
+  # create the output file name
+  # and specify how the download button will take
+  # a screenshot - using the mapview::mapshot() function
+  # and save as a PDF
+  # output$dl <- downloadHandler(
+  #   filename = paste0( Sys.Date()
+  #                      , "_customLeafletmap"
+  #                      , ".png"
+  #   )
+  #   
+  #   , content = function(file) {
+  #     mapshot( x = user.created.map()
+  #              , file = file
+  #              , cliprect = "viewport" # the clipping rectangle matches the height & width from the viewing port
+  #              , selfcontained = FALSE # when this was not specified, the function for produced a PDF of two pages: one of the leaflet map, the other a blank page.
+  #     )
+  #   } # end of content() function
+  # ) # end of downloadHandler() function
+
+  output$dl <- downloadHandler(
+    filename = "map.png",
+    
+    content = function(file) {
+      mapshot(map$dat, file = file)
+    }
+  )
+    
+  #### location clustering ###
   clusterdata = reactive({       # perform clustering
     
     cluster_data = tidydata() %>%
