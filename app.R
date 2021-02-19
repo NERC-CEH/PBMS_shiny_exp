@@ -1,5 +1,9 @@
 # PBMS basic app 24/2/2020
 
+# ShinyHelper pakcagehttps://cwthom94.shinyapps.io/shinyhelper-demo/
+
+# try this sometime https://github.com/cwthom/earl2019-shiny
+
 #fontawesome: crow, dove, kiwi-bird,earlybirds,feather
 # in the future
 
@@ -23,6 +27,13 @@
 # 7. Fix randomnes for clustering (why change when seed is fixed, prob data change)
 # 8. Use htmltools::htmlEscape in leaflet popup for security
 # ? how to give a feel of where most birds are coming from?
+
+
+# DONE. added help tool tip https://stackoverflow.com/questions/46648471/popover-tooltip-for-a-text-in-shiny-app-using-shinybs /MT: 20210219
+# turn to mobile app with ShinyMobile?
+# plot a ggplot occurence heat map? >> https://ourcodingclub.github.io/tutorials/seecc_1/
+# geom_density and geom_contour >> doable in R but much easier with folium
+# https://gis.stackexchange.com/questions/168886/r-how-to-build-heatmap-with-the-leaflet-package
 
 
 packrat::on(project = '/data/PBMS/')
@@ -279,12 +290,16 @@ find_clusters = function(a){  # automatically employ elbows method (last point t
 #             title = 'Bird locations<br>Region:',
 #             opacity = 1)
 
+
+######## UI #########
+
 ui <- fillPage(
   #title = "UK Predatory Bird Monitoring Scheme",
   #theme = shinytheme("simplex"),
   #div(id="logo", style="position:fixed;top:0px;left:0px;z-index:11000;",
   #       "pbms-logo.png">'),
-  leafletOutput("mymap", width = "100%", height = "100%"), # %>% withSpinner(color="#0dc5c1"),
+  tags$style(".fa-info-circle {color:#E87722}"), # change color of font awesome
+  leafletOutput("mymap", width = "100%", height = "100%"), 
   absolutePanel(
     id = "controls", class = "panel panel-default", fixed = TRUE,
     draggable = TRUE, top = 55, left = "8%", #125 
@@ -295,49 +310,75 @@ ui <- fillPage(
       tags$h4("UK Predatory Bird Monitoring Scheme"),
       tabsetPanel(
         tabPanel("Home",
-      sliderInput(inputId = 'years', label = 'Year range', 
-                  min = min_yr, max = max_yr, value = c(1994,2002),animate = T,sep=""),
-      selectInput(inputId = 'species', label = 'Species', 
+                 p(),
+      p(icon('info'), 'The map shows PBMS bird submissions based on user input selection.'),
+      p(icon('info'), 'Hover on the ',icon('info-circle'), 'button next to input boxes for help text.'),
+      p(icon('info'), 'Open/minimize the control panel by clicking the red button.'),
+      p(icon('info'), 'Move the control panel by click and drag on its white space when it is open.'),
+      p(icon('info'), 'Hover and click on bird for individual bird details.'),
+      
+      
+      tags$div(title="Select the year range. Use the play button to animate changes every N years.",
+          sliderInput(inputId = 'years', label = tagList("Year range:",icon('info-circle')),
+                  min = min_yr, max = max_yr, value = c(1994,2002),animate = T,sep="")),
+      tags$div(title="Select the species to show on map. Click on box for options. Backspace to delete choice.",
+          selectInput(inputId = 'species', label = tagList("Species:",icon('info-circle')), 
                   multiple =TRUE,
                   selectize = TRUE,
-                  selected = c('Barn Owl','Heron','Sparrowhawk','Kestrel'), 
-                  choices = species_choices),
+                  selected = c('Barn Owl','Sparrowhawk','Kestrel'), 
+                  choices = species_choices)),
       #textInput(inputId = 'id_filter',label = 'Filter by Carcass ID:', value = ''),
       shinyWidgets::searchInput(
         inputId = "id_filter", 
         label = "Filter by Carcass ID:", 
-        placeholder = "This is a placeholder", 
+        placeholder = "Enter a single PBMS Carcass ID", 
         btnSearch = icon("search"), 
         btnReset = icon("remove"), 
         width = "70%"
       ),
-      checkboxInput(inputId = 'overlay_built', 'Overlay built areas (England and Wales)'),
-      #p("Save plot hello"),
+      tags$div(title="It will take a few seconds.",
+               checkboxInput(inputId = 'overlay_built', tagList("Overlay built areas (England and Wales)",icon('info-circle')))),
       p(),
-      downloadButton("dl",label = "Download map"),
+      tags$div(title="You can download a static image of the interactive map.",
+        downloadButton("dl",label = "Download map")),
       
-      radioButtons(inputId = 'marker_option', label = 'Marker option:', 
+      tags$div(title='The type of marker to represesnt each bird on map.',
+               radioButtons(inputId = 'marker_option', label = tagList('Marker option:',icon('info-circle')), 
                   selected = 'circles', 
-                  choices = c('pins','circles','PCB'), inline = T)
+                  choices = c('pins','circles','PCB'), inline = T))
+     
         ),
+      div(class="flexcontainer", 
+          
+          # action button
+          actionButton(inputId="pdf", label="Go to User Manual", class="btn-success" , 
+                       onclick = "window.open('PBMS explorer App User Manual.pdf')")
+      )
+      ,
+      
         tabPanel("Regions",
                  # selectInput(inputId = 'loc_cluster_var', label = 'Location clustering variables:', 
                  #             selected = c('Latitude','Longitude'), 
                  #             mulitple = TRUE,
                  #             choices = c('Latitude','Longitude', 'Altitude', 'Distance to Sea')) ,
-                 h4('Seclect options to color circle markers and to group variables for analysis.'),
-                 radioButtons(inputId = 'region_option', label = 'Regionalization option:', 
+                 p(),
+                 p(icon('info'), 'Seclect options to color circle markers and to group variables for analysis.'),
+                 tags$div(title="This controls the groupings in the circle markers and analysis tab.",
+                     radioButtons(inputId = 'region_option', label = tagList('Regionalization option:',icon('info-circle')), 
                               selected = 'default', 
-                              choices = c('default','UK Economic regions','clusters','species','year'), inline = T),
-                 selectInput(inputId = 'cluster_vars', label = 'Clustering variables', 
+                              choices = c('default','UK Economic regions','clusters','species','year'), inline = T)),
+                 tags$div(title="The variables used for clustering if clusters is selected above. Click on box for options. Backspace to delete choice.",
+                 selectInput(inputId = 'cluster_vars', label = tagList('Clustering variables',icon('info-circle')), 
                              multiple =TRUE,
                              selectize = TRUE,
                              selected = c("Long","Lat","elevation","dist_to_coast"), 
                              choices = c("Longitude" = "Long","Latitude" = "Lat","Elevation" = "elevation",
-                                         "Distance to coast" = "dist_to_coast")),
+                                         "Distance to coast" = "dist_to_coast"))),
                  plotlyOutput("region_boxplot")
                  ),
         tabPanel("Analysis",
+                 p(),
+                 p(icon('info'), 'These plots show the changes in numbers of PBMS records over the years, grouped by the option selected in the "Regions" tab.'),
                  # selectInput(inputId = 'species2', label = 'Species', 
                  #             selectize = TRUE,
                  #             selected = species_choices, 
@@ -431,7 +472,7 @@ server <- function(input, output, session) {
                  color = ~factpal(region),
                  popup = ~(paste("<b><font color='#0281a4'>UK Predatory Bird Monitoring Scheme</font></b>",
                                 "<br/><b>Submission year:</b>",`Year submitted to PBMS`,
-                                "<br/><b>Post mortem date:</b>",as.character(`PM_DATE`),
+                              #  "<br/><b>Post mortem date:</b>",as.character(`PM_DATE`),
                                 "<br/><b>PBMS ID:</b>",`CARCASS_ID`, 
                                 "<br/><b>Species:</b>",`Bird species`,
                               #  "<br/><b>Common PCB conc.:</b>", PCB, 
@@ -449,9 +490,10 @@ server <- function(input, output, session) {
                                  color = ~pal(PCB),
                                  popup = ~paste("<b><font color='#0281a4'>UK Predatory Bird Monitoring Scheme</font></b>",
                                                 "<br/><b>Year:</b>",`Year submitted to PBMS`, 
+                                            #  "<br/><b>Post mortem date:</b>",as.character(`PM_DATE`),
                                                 "<br/><b>PBMS ID:</b>",`CARCASS_ID`, 
                                                 "<br/><b>Species:</b>",`Bird species`,
-                                                "<br/><b>Common PCB conc.:</b>", PCB, 
+                                            #    "<br/><b>Common PCB conc.:</b>", PCB, 
                                                 "<p><font color='#c2c5cc'> &copy;" ,year(Sys.Date()),"UK Centre for Ecology and Hydrology </font></p>") ,
                                  #radius = ~ifelse(type == "ship", 6, 10),
                                  radius = ~(PCB)^2 ,
@@ -507,8 +549,10 @@ server <- function(input, output, session) {
   #               width = 320, height = 214)
   # })
   
-  output$mymap <- renderLeaflet({                          
+  output$mymap <- renderLeaflet({  
+    withProgress(message = 'Loading plot', {
     foundational.map()
+    })
   })
   
   ######## Map shot stuff #########
@@ -620,6 +664,12 @@ server <- function(input, output, session) {
   })
   
   ##### input controls ####
+  
+  # observeEvent(input$pdf, {
+  #   # Absolute path to a pdf, use file.path()
+  #   file.show("www/PBMS explorer App User Manual.docx")
+  # })
+  # 
   observeEvent(list(), {   ### show dropdown content during startup
     toggleDropdownButton(inputId = "mydropdown")
   }, ignoreInit = FALSE)
