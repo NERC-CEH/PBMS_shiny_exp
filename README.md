@@ -13,3 +13,8 @@ Screenshot
 ![PBMS logo](https://www.ceh.ac.uk/sites/default/files/pbms-logo-primary.jpg)
 
 
+### Some helpful resources
+- https://mastering-shiny.org/index.html
+- https://unleash-shiny.rinterface.com/index.html
+- https://rstudio.github.io/leaflet
+- https://plotly-r.com/control-modebar.html
